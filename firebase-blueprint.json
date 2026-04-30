@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "Patient": {
+      "title": "Patient",
+      "description": "Patient record including EMR summary and surgical variations.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["Not started", "Annotating", "Completed"] },
+        "emrSummary": { "type": "string" },
+        "differences": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "Benchmark": {
+      "title": "Benchmark",
+      "description": "A generated benchmark question and answer for a patient.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "patientId": { "type": "string" },
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "choices": { "type": "array", "items": { "type": "string" } },
+        "logic": {
+          "type": "object",
+          "properties": {
+            "evidence": { "type": "object" },
+            "answerOrigin": { "type": "string" },
+            "choiceRule": { "type": "string" }
+          }
+        },
+        "scores": { "type": "object" },
+        "status": { "type": "string", "enum": ["draft", "approved", "flagged"] },
+        "feedback": { "type": "string" },
+        "issueType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["patientId", "question", "answer", "status"]
+    }
+  },
+  "firestore": {
+    "patients": {
+      "schema": "Patient",
+      "description": "List of patients available for benchmarking"
+    },
+    "benchmarks": {
+      "schema": "Benchmark",
+      "description": "Collection of generated benchmarks"
+    }
+  }
+}

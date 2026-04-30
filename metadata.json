@@ -1,0 +1,6 @@
+{
+  "name": "SurgeBenchmark",
+  "description": "A professional Doctor-in-the-loop benchmark construction system for surgical AI evaluation, enabling precise logic definition and annotation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

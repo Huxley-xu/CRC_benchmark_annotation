@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // A user is a reviewer if their UID has a doc in /allowedReviewers.
+    // Add doctors manually in the Firebase Console (Firestore -> allowedReviewers
+    // -> document ID = the user's UID, any fields you like e.g. {email, role}).
+    function isReviewer() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/allowedReviewers/$(request.auth.uid));
+    }
+
+    match /allowedReviewers/{uid} {
+      // Only readable by the user themselves; never client-writable.
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /patients/{patientId} {
+      allow read, write: if isReviewer();
+    }
+
+    match /benchmarks/{benchmarkId} {
+      allow read, write: if isReviewer();
+    }
+  }
+}
+
