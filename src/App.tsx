@@ -32,9 +32,11 @@ import {
   ShieldX,
   FolderOpen,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import SeedDesigner from './SeedDesigner';
 import { 
   Patient, 
   Benchmark,
@@ -115,6 +117,7 @@ export default function App() {
   const [activeClipId, setActiveClipId] = useState<string | null>(null);
   const [emrFolded, setEmrFolded] = useState(true);
   const [clinicalExpanded, setClinicalExpanded] = useState(false);
+  const [view, setView] = useState<'review' | 'designer'>('review');
 
   const handleLinkVideo = async (url: string, level: 'node' | 'category' | 'question' = 'node') => {
     if (!selectedPatientId || !user || !selectedPatient) return;
@@ -644,6 +647,26 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/5">
+            <button
+              onClick={() => setView('review')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
+                view === 'review' ? 'bg-blue-600 text-white shadow' : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Review Terminal
+            </button>
+            <button
+              onClick={() => setView('designer')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
+                view === 'designer' ? 'bg-[#006F77] text-white shadow' : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Seed Designer
+            </button>
+          </div>
           <button 
             onClick={fetchPatients}
             className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/5 group"
@@ -672,6 +695,9 @@ export default function App() {
         </div>
       </header>
 
+      {view === 'designer' ? (
+        <SeedDesigner />
+      ) : (
       <div className="flex-1 flex overflow-hidden">
         {/* 2. Primary Navigation (Sidebar) */}
         <aside className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0 shadow-sm z-40">
@@ -1522,6 +1548,7 @@ export default function App() {
           </div>
         </aside>
       </div>
+      )}
     </div>
   );
 }
