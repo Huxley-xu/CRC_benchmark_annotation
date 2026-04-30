@@ -114,6 +114,7 @@ export default function App() {
   const [isLinking, setIsLinking] = useState(false);
   const [activeClipId, setActiveClipId] = useState<string | null>(null);
   const [emrFolded, setEmrFolded] = useState(true);
+  const [clinicalExpanded, setClinicalExpanded] = useState(false);
 
   const handleLinkVideo = async (url: string, level: 'node' | 'category' | 'question' = 'node') => {
     if (!selectedPatientId || !user || !selectedPatient) return;
@@ -875,9 +876,15 @@ export default function App() {
                       </h3>
                       <p className="text-[11px] text-slate-500 font-medium uppercase tracking-widest mt-1">Vetting Stage: Clinical Operational Logic</p>
                     </div>
+                    <button
+                      onClick={() => setClinicalExpanded(v => !v)}
+                      className="shrink-0 text-[9px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-100 transition-colors"
+                    >
+                      {clinicalExpanded ? '▲ Hide EMR' : '▼ Show EMR & Deviations'}
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-8">
+                  {clinicalExpanded && <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-4">
                       <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden transition-all">
                         <button 
@@ -931,7 +938,7 @@ export default function App() {
                          )}
                       </div>
                     </div>
-                  </div>
+                  </div>}
                 </section>
 
                 {/* Middle: Media Review Terminal */}
