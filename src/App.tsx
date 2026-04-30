@@ -730,14 +730,14 @@ export default function App() {
         </aside>
 
         {/* 3. Operational Workspace */}
-        <main className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-hidden relative">
+        <main className="flex-1 min-w-0 bg-slate-50 overflow-y-auto relative">
           <AnimatePresence>
             {showDashboard && (
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }} 
                 animate={{ opacity: 1, scale: 1 }} 
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="absolute inset-0 p-6 z-50 bg-slate-900/98 backdrop-blur-xl flex items-center justify-center"
+                className="fixed inset-0 p-6 z-50 bg-slate-900/98 backdrop-blur-xl flex items-center justify-center"
               >
                  <div className="max-w-4xl w-full bg-slate-900 border border-white/10 rounded-3xl p-10 shadow-[0_0_100px_rgba(0,0,0,0.5)]">
                     <div className="flex items-center justify-between mb-6">
@@ -769,7 +769,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <div className="flex-1 min-h-0 p-6 flex flex-col gap-6 overflow-y-auto">
+          <div className="p-6 flex flex-col gap-6">
             {selectedPatient ? (
               <>
                 {/* Top: Clinical Summary Grid */}
