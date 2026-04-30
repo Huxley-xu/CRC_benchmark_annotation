@@ -4,6 +4,84 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Brand palette — applied by overriding Tailwind built-in color ramps:
+     Primary (blue ramp)  → Teal   #006F77
+     Success (green ramp) → Cyan   #60D0CF
+     Danger  (red ramp)   → Wine   #A54C52
+     Warning (orange ramp)→ Coral  #FF6D4E
+     Soft    (pink ramp)  → Pink   #F1A7A1                                  */
+
+  --brand-pink: #F1A7A1;
+  --brand-teal: #006F77;
+  --brand-cyan: #60D0CF;
+  --brand-wine: #A54C52;
+  --brand-coral: #FF6D4E;
+
+  /* Blue ramp → Teal */
+  --color-blue-50:  #E6F2F3;
+  --color-blue-100: #C8E2E4;
+  --color-blue-200: #95C7CB;
+  --color-blue-300: #5FA9AF;
+  --color-blue-400: #2D8C93;
+  --color-blue-500: #006F77;
+  --color-blue-600: #005F66;
+  --color-blue-700: #004A50;
+  --color-blue-800: #00373B;
+  --color-blue-900: #002326;
+  --color-blue-950: #001214;
+
+  /* Green ramp → Cyan */
+  --color-green-50:  #ECFAFA;
+  --color-green-100: #D1F4F3;
+  --color-green-200: #A6EAE8;
+  --color-green-300: #7DDFDD;
+  --color-green-400: #60D0CF;
+  --color-green-500: #3EBDBC;
+  --color-green-600: #2A9E9D;
+  --color-green-700: #237F7E;
+  --color-green-800: #1D6362;
+  --color-green-900: #144545;
+  --color-green-950: #082323;
+
+  /* Red ramp → Wine */
+  --color-red-50:  #FBEEEF;
+  --color-red-100: #F4D5D7;
+  --color-red-200: #E7AAB0;
+  --color-red-300: #D77E87;
+  --color-red-400: #C25E68;
+  --color-red-500: #A54C52;
+  --color-red-600: #8C3F45;
+  --color-red-700: #6F3236;
+  --color-red-800: #54262A;
+  --color-red-900: #3A1A1D;
+  --color-red-950: #1F0E10;
+
+  /* Orange ramp → Coral */
+  --color-orange-50:  #FFF1ED;
+  --color-orange-100: #FFDDD2;
+  --color-orange-200: #FFB9A4;
+  --color-orange-300: #FF9577;
+  --color-orange-400: #FF7E5F;
+  --color-orange-500: #FF6D4E;
+  --color-orange-600: #E0533A;
+  --color-orange-700: #B23F2C;
+  --color-orange-800: #832D20;
+  --color-orange-900: #571C13;
+  --color-orange-950: #2D0E08;
+
+  /* Pink ramp → Soft pink */
+  --color-pink-50:  #FEF4F3;
+  --color-pink-100: #FCE5E3;
+  --color-pink-200: #F8CDC9;
+  --color-pink-300: #F4B5AF;
+  --color-pink-400: #F1A7A1;
+  --color-pink-500: #E78A82;
+  --color-pink-600: #D26B62;
+  --color-pink-700: #A85047;
+  --color-pink-800: #7C3A33;
+  --color-pink-900: #4F2421;
+  --color-pink-950: #2A1311;
 }
 
 @layer base {
