@@ -85,23 +85,71 @@
 }
 
 @layer base {
+  * {
+    box-sizing: border-box;
+  }
+
   body {
-    @apply font-sans bg-[#f8fafc] text-slate-900;
+    @apply font-sans bg-[#f7f8fa] text-slate-800 antialiased;
+    letter-spacing: 0;
+  }
+
+  button, input, select, textarea {
+    font: inherit;
   }
 }
 
 .compact-input {
-  @apply text-xs px-2.5 py-1.5 border border-slate-200 rounded bg-white w-full focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all;
+  @apply text-xs px-2.5 py-1.5 border border-slate-200 rounded-md bg-white w-full focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all;
 }
 
 .section-header {
-  @apply text-[11px] font-bold text-slate-500 tracking-wider uppercase mb-2;
+  @apply text-[11px] font-extrabold text-slate-600 tracking-[0.12em] uppercase mb-2;
 }
 
 .logic-card {
-  @apply bg-white border border-slate-200 border-l-4 border-l-blue-600 rounded;
+  @apply bg-white border border-slate-200 border-l-4 border-l-blue-600 rounded-md;
 }
 
 .status-chip {
-  @apply text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase;
+  @apply text-[10px] px-1.5 py-0.5 rounded-md font-semibold uppercase;
+}
+
+.clinical-card {
+  @apply bg-white border border-slate-200 rounded-lg shadow-[0_1px_2px_rgba(15,23,42,0.04)];
+}
+
+.clinical-card-header {
+  @apply px-4 py-3 bg-slate-50/80 border-b border-slate-200 rounded-t-lg;
+}
+
+.clinical-label {
+  @apply text-[11px] font-extrabold text-slate-600 tracking-[0.1em] uppercase;
+}
+
+.clinical-chip {
+  @apply inline-flex items-center rounded border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-semibold leading-none text-slate-600 shadow-[0_1px_1px_rgba(15,23,42,0.03)];
+}
+
+.clinical-field {
+  @apply w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }

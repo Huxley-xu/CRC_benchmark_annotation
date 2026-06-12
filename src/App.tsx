@@ -51,10 +51,147 @@ import { auth, login, logout, db } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, serverTimestamp, query, getDocs, setDoc, doc } from 'firebase/firestore';
 
+const DEMO_USER_ID = 'local-demo-reviewer';
+
+const demoPatients: Patient[] = [
+  {
+    id: 'CRC-DEMO-001',
+    name: 'Rectal cancer benchmark case',
+    status: 'Needs Review',
+    operativeEMR:
+      'Laparoscopic low anterior resection for mid-rectal adenocarcinoma after neoadjuvant therapy. Dense pelvic adhesions were noted. Inferior mesenteric artery was identified and divided with high ligation. Total mesorectal excision was completed with intact mesorectal envelope.',
+    emrSummary:
+      'Mid-rectal adenocarcinoma, post-neoadjuvant therapy, laparoscopic low anterior resection with TME.',
+    differences: {
+      anatomy: ['Narrow male pelvis', 'Dense left pelvic adhesions'],
+      abnormalFindings: ['Fibrotic TME plane after neoadjuvant therapy', 'Difficult distal margin exposure'],
+      instrumentUsage: ['Energy device for mesenteric division', 'Circular stapler anastomosis'],
+    },
+    videos: [
+      {
+        id: 'V1',
+        title: 'Low anterior resection source video',
+        categories: [
+          {
+            id: 'phase-vascular',
+            name: 'Vascular control',
+            questions: [
+              {
+                id: 'Q-vascular-01',
+                question:
+                  'During vascular control, which operative decision best explains the selected inferior mesenteric artery management?',
+                answer:
+                  'High ligation was selected after identifying the IMA to support oncologic lymphovascular clearance.',
+                choices: [
+                  'Low ligation was selected to preserve the left colic artery without nodal clearance.',
+                  'High ligation was selected after identifying the IMA to support oncologic lymphovascular clearance.',
+                  'The IMA was not identified because the dissection remained entirely lateral.',
+                  'The vessel was clipped only after an anastomotic leak test was completed.',
+                ],
+                videoCaption:
+                  'The surgeon exposes the vascular pedicle, identifies the IMA origin, and divides it before mesenteric mobilization continues.',
+                sourcePath: 'demo/V1/vascular-control/Q-vascular-01',
+                logic: {
+                  evidence: { emr: true, video: true, knowledge: true },
+                  answerOrigin: 'Operative EMR and vascular-control video segment',
+                  choiceRule: 'Correct choice must connect vessel identification with oncologic rationale.',
+                },
+                scoring: {
+                  consensus: {
+                    questionConstruction: {
+                      finalScore5: 4.4,
+                      components: { grounding: 4.5, consistency: 4.2, clarity: 4.4 },
+                    } as any,
+                    answerValidity: {
+                      finalScore5: 4.6,
+                      components: { evidence_alignment: 4.7, clinical_validity: 4.6, temporal_phase_fit: 4.5 },
+                    } as any,
+                    distractorQuality: {
+                      finalScore5: 4.1,
+                      components: { plausibility: 4.0, separation: 4.3, balance: 4.0 },
+                    } as any,
+                    unifiedReliabilityScore100: 88,
+                  },
+                  escalationPolicy: { sendToHumanReview: false },
+                  confidence: {
+                    overall: 0.86,
+                    agreementScore: 0.82,
+                    needsManualReview: false,
+                    consistencyFlags: [],
+                  } as any,
+                },
+                reviewStatus: 'pending',
+                issueType: 'none',
+                doctorFeedback: '',
+              },
+            ],
+          },
+          {
+            id: 'phase-tme',
+            name: 'TME plane',
+            questions: [
+              {
+                id: 'Q-tme-01',
+                question:
+                  'What intraoperative finding most directly increases the difficulty of maintaining the correct TME plane?',
+                answer:
+                  'Fibrosis after neoadjuvant therapy makes the mesorectal plane harder to preserve.',
+                choices: [
+                  'A normal avascular plane makes the TME dissection easier.',
+                  'Fibrosis after neoadjuvant therapy makes the mesorectal plane harder to preserve.',
+                  'The anvil insertion eliminates the need for pelvic dissection.',
+                  'The splenic flexure is never mobilized in rectal cancer surgery.',
+                ],
+                videoCaption:
+                  'The pelvic dissection proceeds through a narrowed field with fibrotic tissue around the mesorectal plane.',
+                sourcePath: 'demo/V1/tme-plane/Q-tme-01',
+                logic: {
+                  evidence: { emr: true, video: true, knowledge: true },
+                  answerOrigin: 'Neoadjuvant-treatment history and TME dissection segment',
+                  choiceRule: 'Correct answer must identify fibrosis as the difficulty modifier.',
+                },
+                scoring: {
+                  consensus: {
+                    questionConstruction: {
+                      finalScore5: 4.2,
+                      components: { grounding: 4.1, consistency: 4.2, clarity: 4.4 },
+                    } as any,
+                    answerValidity: {
+                      finalScore5: 4.5,
+                      components: { evidence_alignment: 4.4, clinical_validity: 4.6, temporal_phase_fit: 4.5 },
+                    } as any,
+                    distractorQuality: {
+                      finalScore5: 3.8,
+                      components: { plausibility: 3.6, separation: 4.0, balance: 3.8 },
+                    } as any,
+                    unifiedReliabilityScore100: 82,
+                  },
+                  escalationPolicy: { sendToHumanReview: true },
+                  confidence: {
+                    overall: 0.78,
+                    agreementScore: 0.74,
+                    needsManualReview: true,
+                    consistencyFlags: ['distractor-review'],
+                  } as any,
+                },
+                reviewStatus: 'pending',
+                issueType: 'distractor',
+                doctorFeedback: 'Consider replacing absolute distractors with more plausible surgical alternatives.',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    benchmarkCount: 2,
+  },
+];
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [authError, setAuthError] = useState('');
   
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
@@ -118,6 +255,29 @@ export default function App() {
   const [emrFolded, setEmrFolded] = useState(true);
   const [clinicalExpanded, setClinicalExpanded] = useState(false);
   const [view, setView] = useState<'review' | 'designer'>('review');
+  const isDemo = user?.uid === DEMO_USER_ID;
+
+  const enterDemoMode = () => {
+    setAuthError('');
+    setUser({
+      uid: DEMO_USER_ID,
+      email: 'demo-reviewer@local',
+      displayName: 'Demo Reviewer',
+    } as User);
+    setPatients(demoPatients);
+    setSelectedPatientId(demoPatients[0].id);
+    runDiagnostics(demoPatients);
+  };
+
+  const handleLogin = async () => {
+    setAuthError('');
+    try {
+      await login();
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      setAuthError(error?.code || error?.message || 'Firebase login failed. Use local demo mode below.');
+    }
+  };
 
   const handleLinkVideo = async (url: string, level: 'node' | 'category' | 'question' = 'node') => {
     if (!selectedPatientId || !user || !selectedPatient) return;
@@ -171,6 +331,17 @@ export default function App() {
         });
       }
 
+      if (isDemo) {
+        setPatients(prev => prev.map(p =>
+          p.id === selectedPatientId ? { ...p, videos: updatedVideos, status: 'Annotating' } : p
+        ));
+        setPhaseVideoInput('');
+        setStepVideoInput('');
+        setVideoInput('');
+        alert('Demo mode: video link updated locally.');
+        return;
+      }
+
       await setDoc(doc(db, 'patients', selectedPatientId), {
         videos: updatedVideos,
         status: 'Annotating'
@@ -197,6 +368,13 @@ export default function App() {
     if (!selectedPatientId || !user) return;
     setSaving(true);
     try {
+      if (isDemo) {
+        setPatients(prev => prev.map(p =>
+          p.id === selectedPatientId ? { ...p, videoFolderUrl: url, status: 'Annotating' } : p
+        ));
+        return;
+      }
+
       await setDoc(doc(db, 'patients', selectedPatientId), {
         videoFolderUrl: url,
         status: 'Annotating'
@@ -255,11 +433,11 @@ export default function App() {
       
       // Persist to Firebase
       const patientToSave = updatedPatients.find(p => p.id === selectedPatientId);
-      if (patientToSave) {
+      if (patientToSave && !isDemo) {
         await setDoc(doc(db, 'patients', selectedPatientId), patientToSave);
       }
 
-      alert(`Benchmark Item updated: ${decision.toUpperCase()}`);
+      alert(`${isDemo ? 'Demo mode: ' : ''}Benchmark Item updated: ${decision.toUpperCase()}`);
       if (decision === 'publish' || decision === 'approve') setEditMode(false);
     } catch (error) {
       console.error('Save error:', error);
@@ -285,6 +463,12 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('demo') === '1') {
+      enterDemoMode();
+      setAuthLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthLoading(false);
@@ -296,6 +480,13 @@ export default function App() {
   }, []);
 
   async function fetchPatients() {
+    if (user?.uid === DEMO_USER_ID) {
+      setPatients(demoPatients);
+      if (!selectedPatientId) setSelectedPatientId(demoPatients[0].id);
+      runDiagnostics(demoPatients);
+      return;
+    }
+
     try {
       const q = query(collection(db, 'patients'));
       const snapshot = await getDocs(q);
@@ -307,6 +498,10 @@ export default function App() {
       runDiagnostics(patientList);
     } catch (error) {
       console.error('Error fetching patients:', error);
+      setAuthError('Firebase data access failed. Loaded local demo data instead.');
+      setPatients(demoPatients);
+      setSelectedPatientId(demoPatients[0].id);
+      runDiagnostics(demoPatients);
     }
   }
 
@@ -346,6 +541,7 @@ export default function App() {
         }
 
         let importCount = 0;
+        const importedPatients: Patient[] = [];
         for (const p of patientsToImport) {
           const rawId = p.id || p.patientId || p.benchmarkPatientId;
           const videosSource = p.videos || p.videoNodes || [];
@@ -394,13 +590,24 @@ export default function App() {
                 acc + (v.categories || []).reduce((acc2: number, c: any) => acc2 + (c.questions || []).length, 0), 0)
             };
 
-            await setDoc(doc(db, 'patients', safeId), structuredPatient);
+            if (isDemo) {
+              importedPatients.push(structuredPatient);
+            } else {
+              await setDoc(doc(db, 'patients', safeId), structuredPatient);
+            }
             importCount++;
           }
         }
         
-        await fetchPatients();
-        alert(`Successfully ingested ${importCount} patient records.`);
+        if (isDemo) {
+          const nextPatients = importedPatients.length > 0 ? importedPatients : demoPatients;
+          setPatients(nextPatients);
+          setSelectedPatientId(nextPatients[0]?.id || '');
+          runDiagnostics(nextPatients);
+        } else {
+          await fetchPatients();
+        }
+        alert(`${isDemo ? 'Demo mode: ' : ''}Successfully ingested ${importCount} patient records.`);
         setShowDashboard(true);
       } catch (error: any) {
         console.error('Import error:', error);
@@ -426,6 +633,13 @@ export default function App() {
       }));
       
       try {
+        if (isDemo) {
+          setPatients(prev => prev.map(p =>
+            p.id === selectedPatientId ? { ...p, clips: updatedClips, status: 'Annotating' } as any : p
+          ));
+          return;
+        }
+
         await setDoc(doc(db, 'patients', selectedPatientId), {
           clips: updatedClips,
           status: 'Annotating'
@@ -563,6 +777,16 @@ export default function App() {
     const updatedVideos = [...(selectedPatient.videos || []), newNode];
     setSaving(true);
     try {
+      if (isDemo) {
+        setPatients(prev => prev.map(p =>
+          p.id === selectedPatientId ? { ...p, videos: updatedVideos, benchmarkCount: p.benchmarkCount + 1 } : p
+        ));
+        setSelectedVideoIdx(updatedVideos.length - 1);
+        setSelectedCategoryIdx(0);
+        setSelectedQuestionIdx(0);
+        return;
+      }
+
       await setDoc(doc(db, 'patients', selectedPatientId), {
         videos: updatedVideos
       }, { merge: true });
@@ -581,6 +805,12 @@ export default function App() {
     if (!user) return;
     setSaving(true);
     try {
+      if (isDemo) {
+        alert('Demo mode: benchmark validation audit committed locally.');
+        setFeedback('');
+        return;
+      }
+
       await addDoc(collection(db, 'benchmarks'), {
         patientId: selectedPatientId,
         question: seedQuestion,
@@ -606,21 +836,33 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#f8fafc]">
-        <div className="bg-white p-10 rounded-2xl border border-slate-200 shadow-xl max-w-md w-full text-center space-y-8">
-          <div className="w-20 h-20 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center text-white text-4xl font-black shadow-lg">SB</div>
+      <div className="h-screen flex items-center justify-center bg-[#f7f8fa]">
+        <div className="bg-white p-9 rounded-lg border border-slate-200 shadow-[0_12px_34px_rgba(15,23,42,0.08)] max-w-md w-full text-center space-y-7">
+          <div className="w-16 h-16 bg-slate-900 rounded-lg mx-auto flex items-center justify-center text-white text-2xl font-extrabold">SB</div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Clinical Governance</h2>
-            <p className="text-sm text-slate-500 leading-relaxed font-medium">Surgical AI Benchmark Construction & Quality Assurance Terminal</p>
+            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Clinical Governance</h2>
+            <p className="text-sm text-slate-500 leading-relaxed font-medium">Surgical AI Benchmark Construction & Quality Assurance Review</p>
           </div>
           <button 
-            onClick={login}
-            className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-black transition-all shadow-md group"
+            onClick={handleLogin}
+            className="w-full py-3 bg-slate-900 text-white rounded-md font-semibold flex items-center justify-center gap-3 hover:bg-black transition-all group"
           >
             <LogIn className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             Authenticate Clinical ID
           </button>
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+          <button
+            onClick={enterDemoMode}
+            className="w-full py-3 bg-white text-slate-700 rounded-md font-semibold flex items-center justify-center gap-3 hover:bg-slate-50 transition-all border border-slate-200"
+          >
+            <FileText className="w-5 h-5 text-slate-500" />
+            Continue with Local Demo
+          </button>
+          {authError && (
+            <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-left text-[12px] font-semibold leading-relaxed text-orange-800">
+              Login unavailable: {authError}
+            </div>
+          )}
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
             <ShieldCheck className="w-3 h-3" />
             ISO 13485 Compliant Ingestion
           </div>
@@ -630,66 +872,66 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen font-sans bg-[#f1f5f9] text-slate-900">
+    <div className="flex flex-col h-screen font-sans bg-[#f7f8fa] text-slate-800">
       {/* 1. Global Header */}
-      <header className="h-14 bg-slate-900 text-white flex items-center px-6 justify-between shrink-0 z-50 border-b border-white/10 shadow-lg">
+      <header className="h-14 bg-white text-slate-800 flex items-center px-6 justify-between shrink-0 z-50 border-b border-slate-200">
         <div className="flex items-center gap-4">
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center font-black text-lg">S</div>
+          <div className="w-8 h-8 bg-slate-900 rounded-md flex items-center justify-center font-black text-sm text-white">S</div>
           <div className="flex flex-col">
-            <h1 className="text-[13px] font-black uppercase tracking-wider flex items-center gap-2">
-              SurgQA Terminal <span className="opacity-30 text-xs">|</span> <span className="text-blue-400 font-bold">Benchmark Operations</span>
+            <h1 className="text-[13px] font-extrabold tracking-tight flex items-center gap-2">
+              SurgQA Benchmark <span className="text-slate-300 text-xs">/</span> <span className="text-slate-500 font-semibold">Annotation Review</span>
             </h1>
-            <div className="flex items-center gap-3 text-[9px] font-mono text-slate-400 mt-0.5">
-              <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5" /> SECURE_HOST: {diagnostic.totalPatients} NODES</span>
-              <span className="text-slate-600 uppercase">SYS_VER: 2.5.0-ALPHA</span>
+            <div className="flex items-center gap-3 text-[10px] font-semibold text-slate-400 mt-0.5">
+              <span className="flex items-center gap-1"><Layers className="w-2.5 h-2.5" /> {diagnostic.totalPatients} cases</span>
+              <span>v2.5.0</span>
             </div>
           </div>
         </div>
         
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1 border border-white/5">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 bg-slate-100 rounded-md p-1 border border-slate-200">
             <button
               onClick={() => setView('review')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
-                view === 'review' ? 'bg-blue-600 text-white shadow' : 'text-slate-300 hover:text-white'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-bold transition-all ${
+                view === 'review' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              Review Terminal
+              Review
             </button>
             <button
               onClick={() => setView('designer')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
-                view === 'designer' ? 'bg-[#006F77] text-white shadow' : 'text-slate-300 hover:text-white'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-bold transition-all ${
+                view === 'designer' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Seed Designer
+              Designer
             </button>
           </div>
           <button 
             onClick={fetchPatients}
-            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/5 group"
+            className="p-2 hover:bg-slate-100 rounded-md transition-colors border border-slate-200 group"
             title="Force Sync Database"
           >
-            <RefreshCw className={`w-4 h-4 text-slate-400 group-hover:text-blue-400 ${saving ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-slate-500 group-hover:text-slate-900 ${saving ? 'animate-spin' : ''}`} />
           </button>
           <button 
             onClick={() => setShowDashboard(!showDashboard)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
-              showDashboard ? 'bg-blue-600 text-white shadow-inner' : 'bg-white/10 hover:bg-white/20 text-slate-300'
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-bold transition-all border ${
+              showDashboard ? 'bg-slate-900 text-white border-slate-900' : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
             }`}
           >
             <BarChart4 className="w-3.5 h-3.5" />
-            Ingestion Metrics
+            Metrics
           </button>
-          <div className="flex items-center gap-3 pl-6 border-l border-white/10">
+          <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
             <div className="text-right">
-              <p className="text-[10px] font-black text-slate-300 uppercase leading-none">{user.displayName || 'Doctor'}</p>
-              <p className="text-[8px] font-mono text-blue-400 uppercase tracking-tighter mt-1">Admin_Clearance: Level_3</p>
+              <p className="text-[11px] font-bold text-slate-700 leading-none">{user.displayName || 'Doctor'}</p>
+              <p className="text-[9px] font-semibold text-slate-400 mt-1">Clinical reviewer</p>
             </div>
-            <button onClick={logout} className="p-2 hover:bg-red-600 rounded-lg transition-colors group">
-              <LogOut className="w-4 h-4 text-slate-400 group-hover:text-white" />
+            <button onClick={logout} className="p-2 hover:bg-red-50 rounded-md transition-colors group">
+              <LogOut className="w-4 h-4 text-slate-400 group-hover:text-red-600" />
             </button>
           </div>
         </div>
@@ -700,14 +942,14 @@ export default function App() {
       ) : (
       <div className="flex-1 flex overflow-hidden">
         {/* 2. Primary Navigation (Sidebar) */}
-        <aside className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0 shadow-sm z-40">
-          <div className="p-4 bg-slate-50 border-b border-slate-200">
+        <aside className="w-64 border-r border-slate-200 bg-white flex flex-col shrink-0 z-40">
+          <div className="p-4 bg-white border-b border-slate-200">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Lookup Case ID..."
-                className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2.5 text-[11px] font-bold text-slate-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                placeholder="Search cases"
+                className="w-full bg-slate-50 border border-slate-200 rounded-md pl-10 pr-4 py-2 text-[12px] font-semibold text-slate-600 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all outline-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -719,15 +961,15 @@ export default function App() {
               <button
                 key={p.id}
                 onClick={() => setSelectedPatientId(p.id)}
-                className={`w-full group text-left px-5 py-4 border-b border-slate-100 transition-all flex items-center justify-between ${
+                className={`w-full group text-left px-4 py-3 border-b border-slate-100 transition-all flex items-center justify-between ${
                   selectedPatientId === p.id 
-                    ? 'bg-blue-50 border-l-4 border-l-blue-600 shadow-inner' 
+                    ? 'bg-slate-50 border-l-2 border-l-slate-900'
                     : 'hover:bg-slate-50'
                 }`}
               >
                 <div className="flex flex-col gap-1.5 overflow-hidden">
                   <div className="flex items-center gap-2">
-                    <span className={`text-[11px] font-black tracking-tight ${selectedPatientId === p.id ? 'text-blue-700' : 'text-slate-900 underline decoration-slate-200 underline-offset-2'}`}>
+                    <span className={`text-[12px] font-extrabold tracking-tight ${selectedPatientId === p.id ? 'text-slate-900' : 'text-slate-700'}`}>
                       {p.id}
                     </span>
                     {(p.videos?.some(v => !!v.videoUrl) || p.videos?.some(v => v.categories?.some(c => !!c.videoUrl))) && (
@@ -736,27 +978,27 @@ export default function App() {
                     {p.emrType === 'EMR Only' && <span className="bg-slate-100 text-slate-400 text-[8px] px-1 py-0.5 rounded font-black uppercase">EMR</span>}
                     {p.status === 'Missing Video' && <AlertTriangle className="w-3 h-3 text-orange-500" />}
                   </div>
-                  <p className="text-[10px] font-bold text-slate-500 truncate group-hover:text-slate-700 transition-colors uppercase tracking-tight">{p.name}</p>
+                  <p className="text-[10px] font-semibold text-slate-500 truncate group-hover:text-slate-700 transition-colors">{p.name}</p>
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
                   <StatusBadge status={p.status} />
-                  {p.benchmarkCount > 0 && <span className="text-[8px] font-black bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">{p.benchmarkCount} QA</span>}
+                  {p.benchmarkCount > 0 && <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{p.benchmarkCount} QA</span>}
                 </div>
               </button>
             ))}
           </div>
 
-          <div className="p-4 bg-slate-900 border-t border-white/10 mt-auto">
-            <label className="flex items-center justify-center gap-2 w-full py-3 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-blue-500 shadow-lg transition-transform active:scale-95 group">
+          <div className="p-4 bg-white border-t border-slate-200 mt-auto">
+            <label className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-900 text-white rounded-md text-[11px] font-bold cursor-pointer hover:bg-black transition active:scale-[0.99] group">
               <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
-              Ingest Codex
+              Import JSON
               <input type="file" accept=".json" className="hidden" onChange={handleImport} disabled={saving} />
             </label>
           </div>
         </aside>
 
         {/* 3. Operational Workspace */}
-        <main className="flex-1 min-w-0 bg-slate-50 overflow-y-auto relative">
+        <main className="flex-1 min-w-0 bg-[#f7f8fa] overflow-y-auto relative">
           <AnimatePresence>
             {showDashboard && (
               <motion.div 
@@ -795,27 +1037,37 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <div className="p-6 flex flex-col gap-6">
+          <div className="p-5 flex flex-col gap-4">
             {selectedPatient ? (
               <>
                 {/* Top: Clinical Summary Grid */}
-                <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                  <div className="flex items-start justify-between mb-6">
+                <section className="clinical-card">
+                  <div className="clinical-card-header flex items-center justify-between">
+                    <h2 className="text-sm font-extrabold text-slate-700">Patient Summary</h2>
+                    <button
+                      onClick={() => setClinicalExpanded(v => !v)}
+                      className="shrink-0 text-[11px] font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-2.5 py-1 bg-white rounded-md border border-slate-200 transition-colors"
+                    >
+                      {clinicalExpanded ? 'Hide EMR' : 'Show EMR'}
+                    </button>
+                  </div>
+                  <div className="p-4">
+                  <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-4 mb-4">
+                      <div className="grid grid-cols-3 gap-3 mb-4">
                         <div className="flex-1 space-y-1">
                            <div className="flex items-center justify-between">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Video Node</label>
+                              <label className="clinical-label">Video Node</label>
                               <button 
                                 onClick={handleAddVideoNode}
-                                className="text-[8px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors flex items-center gap-1"
+                                className="text-[10px] font-semibold text-slate-500 hover:text-slate-900 transition-colors flex items-center gap-1"
                                 title="Add a new video source node to this patient"
                               >
                                 <Plus className="w-2.5 h-2.5" /> Add Node
                               </button>
                            </div>
                            <select 
-                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/10"
+                             className="clinical-field"
                              value={selectedVideoIdx}
                              onChange={(e) => {
                                setSelectedVideoIdx(Number(e.target.value));
@@ -833,11 +1085,11 @@ export default function App() {
                         </div>
                         <div className="flex-1 space-y-1">
                            <div className="flex items-center justify-between">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Surgical Stage / Category</label>
-                              {selectedCategory?.videoUrl && <span className="text-[7px] font-black bg-green-500 text-white px-1 rounded">STREAM_LIVE</span>}
+                              <label className="clinical-label">Surgical Stage</label>
+                              {selectedCategory?.videoUrl && <span className="text-[9px] font-bold bg-green-50 text-green-700 px-1.5 rounded border border-green-100">linked</span>}
                            </div>
                            <select 
-                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/10 mb-2"
+                             className="clinical-field mb-2"
                              value={selectedCategoryIdx}
                              onChange={(e) => {
                                setSelectedCategoryIdx(Number(e.target.value));
@@ -851,14 +1103,14 @@ export default function App() {
                            <div className="flex gap-1.5">
                              <input 
                                placeholder="Phase .mp4 link" 
-                               className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 outline-none"
+                               className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-600 outline-none focus:border-blue-500"
                                value={phaseVideoInput}
                                onChange={(e) => setPhaseVideoInput(e.target.value)}
                              />
                              <button 
                                onClick={() => handleLinkVideo(phaseVideoInput.trim(), 'category')}
                                disabled={!phaseVideoInput.trim() || saving}
-                               className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-50"
+                               className="px-3 py-1.5 bg-slate-900 text-white rounded-md text-[10px] font-bold hover:bg-black transition-all disabled:opacity-50"
                              >
                                Link
                              </button>
@@ -866,11 +1118,11 @@ export default function App() {
                         </div>
                         <div className="flex-1 space-y-1">
                            <div className="flex items-center justify-between">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Target Question</label>
-                              {selectedQuestion?.videoUrl && <span className="text-[7px] font-black bg-blue-500 text-white px-1 rounded">STREAM_LIVE</span>}
+                              <label className="clinical-label">Target Question</label>
+                              {selectedQuestion?.videoUrl && <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 rounded border border-blue-100">linked</span>}
                            </div>
                            <select 
-                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/10 mb-2"
+                             className="clinical-field mb-2"
                              value={selectedQuestionIdx}
                              onChange={(e) => setSelectedQuestionIdx(Number(e.target.value))}
                            >
@@ -881,14 +1133,14 @@ export default function App() {
                            <div className="flex gap-1.5">
                              <input 
                                placeholder="Step .mp4 link" 
-                               className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 outline-none"
+                               className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-600 outline-none focus:border-blue-500"
                                value={stepVideoInput}
                                onChange={(e) => setStepVideoInput(e.target.value)}
                              />
                              <button 
                                onClick={() => handleLinkVideo(stepVideoInput.trim(), 'question')}
                                disabled={!stepVideoInput.trim() || saving}
-                               className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-black transition-all disabled:opacity-50"
+                               className="px-3 py-1.5 bg-slate-900 text-white rounded-md text-[10px] font-bold hover:bg-black transition-all disabled:opacity-50"
                              >
                                Link
                              </button>
@@ -896,98 +1148,98 @@ export default function App() {
                         </div>
                       </div>
                       
-                      <h3 className="section-header !text-slate-900 flex items-center gap-2">
+                      <h3 className="section-header !text-slate-700 flex items-center gap-2">
                          <FileText className="w-4 h-4 text-blue-500" />
-                         Clinical Knowledge Object: {selectedPatient.id}
+                         Case: {selectedPatient.id}
                       </h3>
-                      <p className="text-[11px] text-slate-500 font-medium uppercase tracking-widest mt-1">Vetting Stage: Clinical Operational Logic</p>
+                      <div className="flex flex-wrap items-center gap-2 text-[13px] text-slate-700 font-semibold">
+                        <span>{selectedPatient.name}</span>
+                        <span className="text-slate-300">·</span>
+                        <span>{selectedPatient.status}</span>
+                        <span className="text-slate-300">·</span>
+                        <span>{selectedPatient.benchmarkCount || selectedCategory?.questions?.length || 0} benchmark items</span>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => setClinicalExpanded(v => !v)}
-                      className="shrink-0 text-[9px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-100 transition-colors"
-                    >
-                      {clinicalExpanded ? '▲ Hide EMR' : '▼ Show EMR & Deviations'}
-                    </button>
                   </div>
 
                   {clinicalExpanded && <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-4">
-                      <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden transition-all">
+                      <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden transition-all">
                         <button 
                           onClick={() => setEmrFolded(!emrFolded)}
                           className="w-full flex items-center justify-between p-4 hover:bg-slate-100 transition-colors"
                         >
-                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                          <h4 className="clinical-label flex items-center gap-1.5">
                              <ShieldCheck className="w-3 h-3 text-blue-500" /> Operative EMR
                           </h4>
-                          <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">
+                          <span className="text-[11px] font-semibold text-slate-500">
                             {emrFolded ? 'Show Full Text' : 'Hide Text'}
                           </span>
                         </button>
                         {!emrFolded && (
                           <div className="p-4 pt-0">
-                             <p className="text-[12px] leading-relaxed text-slate-700 font-medium italic">"{selectedPatient.operativeEMR || selectedPatient.emrSummary}"</p>
+                             <p className="text-[13px] leading-relaxed text-slate-700 font-medium">"{selectedPatient.operativeEMR || selectedPatient.emrSummary}"</p>
                           </div>
                         )}
                         {emrFolded && (
                           <div className="px-4 pb-4">
-                             <p className="text-[12px] leading-relaxed text-slate-400 truncate opacity-60">"{(selectedPatient.operativeEMR || selectedPatient.emrSummary).substring(0, 100)}..."</p>
+                             <p className="text-[12px] leading-relaxed text-slate-500 truncate">"{(selectedPatient.operativeEMR || selectedPatient.emrSummary).substring(0, 100)}..."</p>
                           </div>
                         )}
                       </div>
                       {selectedPatient.nonOperativeEMR && (
-                        <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">Non-Operative History</h4>
-                          <p className="text-[11px] leading-snug text-slate-600">{selectedPatient.nonOperativeEMR}</p>
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <h4 className="clinical-label mb-2 flex items-center gap-1.5">Non-Operative History</h4>
+                          <p className="text-[12px] leading-relaxed text-slate-600">{selectedPatient.nonOperativeEMR}</p>
                         </div>
                       )}
                     </div>
 
                     <div className="space-y-4">
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">Codex-Identified Deviations</h4>
+                      <h4 className="clinical-label mb-2 flex items-center gap-1.5">Codex-Identified Deviations</h4>
                       <div className="space-y-3">
                          {selectedPatient.differences.anatomy && (
                            <div>
-                             <p className="text-[9px] font-black text-blue-500 uppercase mb-1">Anatomical Variations</p>
+                             <p className="text-[10px] font-extrabold text-slate-500 uppercase mb-1">Anatomical Variations</p>
                              <div className="flex flex-wrap gap-2">
-                               {selectedPatient.differences.anatomy.map((d, i) => <span key={i} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-700 shadow-sm">{d}</span>)}
+                               {selectedPatient.differences.anatomy.map((d, i) => <span key={i} className="clinical-chip">{d}</span>)}
                              </div>
                            </div>
                          )}
                          {selectedPatient.differences.abnormalFindings && (
                            <div>
-                             <p className="text-[9px] font-black text-orange-500 uppercase mb-1">Abnormal Procedural Findings</p>
+                             <p className="text-[10px] font-extrabold text-slate-500 uppercase mb-1">Abnormal Procedural Findings</p>
                              <div className="flex flex-wrap gap-2">
-                               {selectedPatient.differences.abnormalFindings.map((d, i) => <span key={i} className="px-2 py-1 bg-orange-50 border border-orange-100 rounded text-[10px] font-bold text-orange-700">{d}</span>)}
+                               {selectedPatient.differences.abnormalFindings.map((d, i) => <span key={i} className="clinical-chip !bg-orange-50 !text-orange-700 !border-orange-100">{d}</span>)}
                              </div>
                            </div>
                          )}
                       </div>
                     </div>
                   </div>}
+                  </div>
                 </section>
 
                 {/* Middle: Media Review Terminal */}
-                <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                  <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <section className="clinical-card overflow-hidden">
+                  <div className="clinical-card-header flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <h3 className="text-[11px] font-black uppercase tracking-widest flex items-center gap-2">
+                      <h3 className="clinical-label flex items-center gap-2">
                         <Video className="w-4 h-4 text-slate-400" />
-                        Professional Evidence Terminal
+                        Video Evidence
                       </h3>
                       {videoState === 'playable' && (
-                        <span className="px-2 py-0.5 bg-green-500 text-white rounded-full text-[8px] font-black animate-pulse">STREAMING_LIVE</span>
+                        <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded border border-green-100 text-[10px] font-bold">linked</span>
                       )}
                     </div>
-                       <div className="text-[9px] font-mono text-slate-400 flex gap-4">
-                          {selectedQuestion?.videoUrl && <span className="text-blue-500 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1"><Play className="w-2.5 h-2.5" /> STEP_SYNCED</span>}
-                          {selectedCategory?.videoUrl && !selectedQuestion?.videoUrl && <span className="text-orange-500 font-bold bg-orange-50 px-2 py-0.5 rounded border border-orange-100 flex items-center gap-1"><Play className="w-2.5 h-2.5" /> PHASE_SYNCED</span>}
-                          <span className="flex items-center gap-1"><Info className="w-2.5 h-2.5" /> 1080p_FHD</span>
-                          <span className="flex items-center gap-1 text-green-500 underline underline-offset-2 font-bold cursor-help">CLIP_MANIFEST_VERIFIED</span>
+                       <div className="text-[10px] font-semibold text-slate-500 flex gap-3">
+                          {selectedQuestion?.videoUrl && <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1"><Play className="w-2.5 h-2.5" /> Step synced</span>}
+                          {selectedCategory?.videoUrl && !selectedQuestion?.videoUrl && <span className="text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-100 flex items-center gap-1"><Play className="w-2.5 h-2.5" /> Phase synced</span>}
+                          <span className="flex items-center gap-1"><Info className="w-2.5 h-2.5" /> Evidence source</span>
                        </div>
                   </div>
 
-                  <div className="flex flex-col h-[500px] bg-black relative">
+                  <div className="flex flex-col h-[430px] bg-black relative">
                     {/* Integrated Player Shell */}
                     <div className="flex-1 relative flex items-center justify-center overflow-hidden">
                        {currentVideoUrl ? (
@@ -1184,48 +1436,45 @@ export default function App() {
                 </section>
 
                 {/* Bottom: Question Verification Workspace */}
-                <section className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
-                   <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <section className="clinical-card overflow-hidden">
+                   <div className="clinical-card-header flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white">
-                           <Zap className="w-5 h-5 text-blue-400 fill-blue-400/20" />
-                        </div>
                         <div>
-                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Vetting Workspace</h3>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{selectedQuestion?.id}</p>
+                          <h3 className="text-sm font-extrabold text-slate-700">Task Instruction</h3>
+                          <p className="text-[11px] text-slate-500 font-semibold mt-0.5">{selectedQuestion?.id || 'No question selected'}</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
                         <button 
                           onClick={() => setEditMode(!editMode)}
-                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${
-                            editMode ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'
+                          className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all border ${
+                            editMode ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                           }`}
                         >
-                          {editMode ? 'Disable Edit Mode' : 'Enable Direct Edit'}
+                          {editMode ? 'Finish Editing' : 'Edit'}
                         </button>
                         <button 
                           onClick={() => handleLinkFolder("https://drive.google.com/drive/folders/1a9ZXDICGstayfW1C24SL_CgdXrjqhNJu?usp=drive_link")}
-                          className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black transition-all"
+                          className="px-3 py-1.5 bg-white text-slate-600 border border-slate-200 rounded-md text-[11px] font-semibold flex items-center gap-2 hover:bg-slate-50 transition-all"
                         >
-                          <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
-                          Link User Video Folder
+                          <FolderOpen className="w-3.5 h-3.5 text-slate-500" />
+                          Link Folder
                         </button>
                       </div>
                    </div>
 
-                   <div className="p-8 space-y-10">
+                   <div className="p-4 space-y-6">
                       {/* Q&A Presentation Area */}
-                      <div className="grid grid-cols-5 gap-12">
-                         <div className="col-span-3 space-y-8">
-                            <div className="space-y-4">
-                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Original Question Body</label>
-                               <div className="text-xl font-bold text-slate-900 leading-snug">
+                      <div className="grid grid-cols-5 gap-6">
+                         <div className="col-span-3 space-y-5">
+                            <div className="space-y-3">
+                               <label className="clinical-label">Question</label>
+                               <div className="text-[15px] font-semibold text-slate-800 leading-relaxed">
                                   {selectedQuestion?.question}
                                </div>
                                {editMode && editForm && (
                                  <textarea 
-                                   className="w-full mt-4 p-4 bg-orange-50/30 border-2 border-orange-100 rounded-2xl text-[13px] font-bold text-slate-700 outline-none focus:border-orange-300 transition-all min-h-[100px]"
+                                   className="w-full mt-3 p-3 bg-orange-50/30 border border-orange-100 rounded-md text-[13px] font-semibold text-slate-700 outline-none focus:border-orange-300 transition-all min-h-[96px]"
                                    value={editForm.question}
                                    onChange={(e) => setEditForm({ ...editForm, question: e.target.value })}
                                    placeholder="Revise question text..."
@@ -1233,23 +1482,23 @@ export default function App() {
                                )}
                             </div>
 
-                            <div className="space-y-4">
-                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Choice Architecture</label>
-                               <div className="grid gap-3">
+                            <div className="space-y-3">
+                               <label className="clinical-label">Solution Choices</label>
+                               <div className="grid gap-2">
                                   {(selectedQuestion?.choices || selectedQuestion?.options || []).map((opt, i) => {
                                     const isCorrect = opt === selectedQuestion?.answer;
                                     return (
-                                      <div key={i} className={`flex items-start gap-4 p-4 rounded-2xl border transition-all ${
-                                        isCorrect ? 'bg-green-50 border-green-200 border-2 shadow-sm' : 'bg-slate-50/50 border-slate-100'
+                                      <div key={i} className={`flex items-start gap-3 p-3 rounded-md border transition-all ${
+                                        isCorrect ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'
                                       }`}>
-                                         <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5 ${
-                                           isCorrect ? 'bg-green-600 text-white' : 'bg-white border border-slate-200 text-slate-400'
+                                         <span className={`w-6 h-6 rounded flex items-center justify-center text-[11px] font-extrabold shrink-0 mt-0.5 ${
+                                           isCorrect ? 'bg-green-600 text-white' : 'bg-slate-50 border border-slate-200 text-slate-500'
                                          }`}>
                                             {String.fromCharCode(65 + i)}
                                          </span>
                                          <div className="flex-1">
-                                            <p className={`text-[12px] leading-relaxed font-bold ${isCorrect ? 'text-green-900' : 'text-slate-600'}`}>{opt}</p>
-                                            {isCorrect && <span className="text-[9px] font-black text-green-600 uppercase tracking-widest mt-1 block">Verified Correct Target</span>}
+                                            <p className={`text-[13px] leading-snug font-semibold ${isCorrect ? 'text-green-900' : 'text-slate-700'}`}>{opt}</p>
+                                            {isCorrect && <span className="text-[10px] font-bold text-green-700 mt-1 block">Expected answer</span>}
                                          </div>
                                       </div>
                                     );
@@ -1257,12 +1506,12 @@ export default function App() {
                                </div>
                                
                                {editMode && editForm && (
-                                 <div className="space-y-3 pt-6 border-t border-slate-100 border-dashed">
-                                    <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block">Revise Option Values</label>
+                                 <div className="space-y-3 pt-4 border-t border-slate-100 border-dashed">
+                                    <label className="text-[11px] font-extrabold text-orange-600 uppercase tracking-wider block">Revise Option Values</label>
                                     {editForm.choices.map((opt, i) => (
                                       <input 
                                         key={i}
-                                        className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600"
+                                        className="clinical-field"
                                         value={opt}
                                         onChange={(e) => {
                                           const newChoices = [...editForm.choices];
@@ -1272,9 +1521,9 @@ export default function App() {
                                       />
                                     ))}
                                     <div className="pt-4">
-                                       <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block">Define Correct Answer Rationale (String Match)</label>
+                                       <label className="clinical-label mb-2 block">Define Correct Answer</label>
                                        <select 
-                                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700"
+                                         className="clinical-field"
                                          value={editForm.answer}
                                          onChange={(e) => setEditForm({ ...editForm, answer: e.target.value })}
                                        >
@@ -1286,47 +1535,47 @@ export default function App() {
                             </div>
                          </div>
 
-                         <div className="col-span-2 space-y-10">
-                            <div className="space-y-6">
-                               <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                         <div className="col-span-2 space-y-5">
+                            <div className="space-y-4">
+                               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-4">
+                                  <h4 className="clinical-label flex items-center gap-2">
                                      <Lightbulb className="w-3.5 h-3.5 text-blue-500" /> Evidence Context
                                   </h4>
                                   <div>
-                                    <label className="text-[9px] font-black text-slate-500 uppercase mb-1 block">Video Stream Caption</label>
-                                    <p className="text-[11px] text-slate-700 leading-relaxed font-medium italic">"{selectedQuestion?.videoCaption}"</p>
+                                    <label className="text-[10px] font-extrabold text-slate-500 uppercase mb-1 block">Video Caption</label>
+                                    <p className="text-[12px] text-slate-700 leading-relaxed font-medium">"{selectedQuestion?.videoCaption}"</p>
                                   </div>
                                   <div>
-                                    <label className="text-[9px] font-black text-slate-500 uppercase mb-1 block">Source Tracking</label>
-                                    <code className="text-[9px] font-mono text-blue-600 block bg-blue-50 px-2 py-1 rounded truncate">{selectedQuestion?.sourcePath}</code>
+                                    <label className="text-[10px] font-extrabold text-slate-500 uppercase mb-1 block">Source Tracking</label>
+                                    <code className="text-[10px] font-mono text-blue-700 block bg-blue-50 px-2 py-1 rounded border border-blue-100 truncate">{selectedQuestion?.sourcePath}</code>
                                   </div>
                                </div>
 
-                               <div className="space-y-4 pt-4">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Procedural Logic Config</label>
-                                  <div className="grid gap-3">
-                                     <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
-                                        <label className="text-[9px] font-black text-slate-500 uppercase mb-1 block">Answer Origin Source</label>
+                               <div className="space-y-3 pt-1">
+                                  <label className="clinical-label px-1">Logic Summary</label>
+                                  <div className="grid gap-2">
+                                     <div className="p-3 bg-white border border-slate-200 rounded-md">
+                                        <label className="text-[10px] font-extrabold text-slate-500 uppercase mb-1 block">Answer Origin</label>
                                         {editMode && editForm ? (
                                            <input 
-                                             className="w-full bg-slate-50 border-none px-0 text-xs font-bold text-slate-800 outline-none"
+                                             className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs font-semibold text-slate-800 outline-none"
                                              value={editForm.logic?.answerOrigin || ''}
                                              onChange={(e) => setEditForm({ ...editForm, logic: { ...(editForm.logic || {evidence:{emr:false,video:false,knowledge:false}, answerOrigin: '', choiceRule: ''}), answerOrigin: e.target.value }})}
                                            />
                                         ) : (
-                                           <p className="text-xs font-bold text-slate-800">{selectedQuestion?.logic?.answerOrigin || 'AI Multimodal Extraction'}</p>
+                                           <p className="text-xs font-semibold text-slate-800">{selectedQuestion?.logic?.answerOrigin || 'AI Multimodal Extraction'}</p>
                                         )}
                                      </div>
-                                     <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
-                                        <label className="text-[9px] font-black text-slate-500 uppercase mb-1 block">Distractor Construction Rule</label>
+                                     <div className="p-3 bg-white border border-slate-200 rounded-md">
+                                        <label className="text-[10px] font-extrabold text-slate-500 uppercase mb-1 block">Distractor Rule</label>
                                         {editMode && editForm ? (
                                            <input 
-                                             className="w-full bg-slate-50 border-none px-0 text-xs font-bold text-slate-800 outline-none"
+                                             className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs font-semibold text-slate-800 outline-none"
                                              value={editForm.logic?.choiceRule || ''}
                                              onChange={(e) => setEditForm({ ...editForm, logic: { ...(editForm.logic || {evidence:{emr:false,video:false,knowledge:false}, answerOrigin: '', choiceRule: ''}), choiceRule: e.target.value }})}
                                            />
                                         ) : (
-                                           <p className="text-xs font-bold text-slate-800">{selectedQuestion?.logic?.choiceRule || 'Negative Constraint Mapping'}</p>
+                                           <p className="text-xs font-semibold text-slate-800">{selectedQuestion?.logic?.choiceRule || 'Negative Constraint Mapping'}</p>
                                         )}
                                      </div>
                                   </div>
@@ -1335,12 +1584,12 @@ export default function App() {
 
                             {selectedQuestion?.revisions && selectedQuestion.revisions.length > 0 && (
                                <div className="space-y-4">
-                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-1">Revision History</h4>
+                                  <h4 className="clinical-label px-1">Revision History</h4>
                                   <div className="space-y-2">
                                      {selectedQuestion.revisions.map((rev, i) => (
-                                       <div key={i} className="p-3 bg-green-50 rounded-xl border border-green-100 flex items-center justify-between">
+                                       <div key={i} className="p-3 bg-green-50 rounded-md border border-green-100 flex items-center justify-between">
                                           <div>
-                                             <p className="text-[10px] font-black text-green-700 capitalize">{rev.reviewDecision}</p>
+                                             <p className="text-[11px] font-bold text-green-700 capitalize">{rev.reviewDecision}</p>
                                              <p className="text-[8px] text-green-600 opacity-70">by {rev.authorId}</p>
                                           </div>
                                           <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -1370,43 +1619,53 @@ export default function App() {
         </main>
 
         {/* 4. Hierarchical Validation Console (Right Panel) */}
-        <aside className="w-[400px] border-l border-slate-200 flex flex-col bg-white shrink-0 z-40 overflow-hidden text-slate-900 border-t border-slate-100">
+        <aside className="w-[420px] border-l border-slate-200 flex flex-col bg-white shrink-0 z-40 overflow-hidden text-slate-900">
           {/* Header & Item Summary */}
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                <BarChart4 className="w-4 h-4 text-blue-600" /> Validation Engine
+          <div className="p-4 border-b border-slate-200 bg-white">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                Clinical Review
               </h3>
-              <div className={`px-2 py-0.5 rounded border text-[9px] font-black uppercase tracking-widest ${
+              <div className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold ${
                 (selectedQuestion?.scoring?.consensus?.unifiedReliabilityScore100 || 0) < 85 || selectedQuestion?.scoring?.escalationPolicy?.sendToHumanReview
-                  ? 'bg-orange-50 border-orange-200 text-orange-600'
-                  : 'bg-green-50 border-green-200 text-green-600'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'bg-slate-100 text-slate-700'
               }`}>
                 {(selectedQuestion?.scoring?.consensus?.unifiedReliabilityScore100 || 0) < 85 || selectedQuestion?.scoring?.escalationPolicy?.sendToHumanReview
-                  ? 'Needs Human' : 'Auto-Pass'}
+                  ? 'Needs review' : 'Auto-pass'}
               </div>
+            </div>
+            <div className="flex items-center justify-between text-[12px] text-slate-500 font-semibold mb-3">
+              <button className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-400 bg-slate-50" disabled>← Prev</button>
+              <span>{selectedQuestionIdx + 1} of {selectedCategory?.questions?.length || 0}</span>
+              <button className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-400 bg-slate-50" disabled>Next →</button>
+            </div>
+            <div className="flex justify-center gap-1.5 mb-4">
+              {(selectedCategory?.questions || []).slice(0, 8).map((_, i) => (
+                <span key={i} className={`h-2 rounded-full ${i === selectedQuestionIdx ? 'w-5 bg-blue-600' : 'w-2 bg-slate-300'}`} />
+              ))}
             </div>
 
             {/* NEW: Full Q&A Display at top of validation panel */}
             {selectedQuestion && (
-              <div className="mb-6 p-4 bg-slate-900 rounded-2xl shadow-xl border border-white/5 space-y-3">
+              <div className="mb-4 p-4 bg-white rounded-lg border border-slate-200 space-y-3">
                 <div className="space-y-1">
-                  <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Question Body</p>
-                  <p className="text-xs font-bold text-white leading-relaxed">{selectedQuestion.question}</p>
+                  <p className="clinical-label">Question Body</p>
+                  <p className="text-[13px] font-semibold text-slate-800 leading-relaxed">{selectedQuestion.question}</p>
                 </div>
-                <div className="pt-2 border-t border-white/10 space-y-1">
-                  <p className="text-[8px] font-black text-green-400 uppercase tracking-widest">Target Answer</p>
-                  <p className="text-xs font-bold text-white leading-relaxed">{selectedQuestion.answer}</p>
+                <div className="pt-2 border-t border-slate-100 space-y-1">
+                  <p className="clinical-label">Target Answer</p>
+                  <p className="text-[13px] font-semibold text-slate-800 leading-relaxed">{selectedQuestion.answer}</p>
                 </div>
               </div>
             )}
 
-            <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Unified Reliability Profile</span>
-                  <span className="text-lg font-mono font-black italic text-slate-900">{(selectedQuestion?.scoring?.consensus?.unifiedReliabilityScore100 || 0).toFixed(1)}</span>
+                  <span className="clinical-label">Reliability</span>
+                  <span className="text-base font-mono font-extrabold text-slate-900">{(selectedQuestion?.scoring?.consensus?.unifiedReliabilityScore100 || 0).toFixed(1)}</span>
                </div>
-               <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+               <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
                   <div 
                     className={`h-full transition-all duration-1000 ${(selectedQuestion?.scoring?.consensus?.unifiedReliabilityScore100 || 0) < 85 ? 'bg-orange-500' : 'bg-green-500'}`}
                     style={{ width: `${selectedQuestion?.scoring?.consensus?.unifiedReliabilityScore100 || 0}%` }}
@@ -1415,9 +1674,9 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-8">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 space-y-4">
             {/* 1. Question Construction Score */}
-            <div className="space-y-4">
+            <div className="space-y-3">
                <ScoreDimension 
                  title="Question Construction" 
                  score={selectedQuestion?.scoring?.consensus?.questionConstruction?.finalScore5 || 0}
@@ -1450,26 +1709,26 @@ export default function App() {
             </div>
 
             {/* Confidence Metadata */}
-            <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
-               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                  <ShieldCheck className="w-3.5 h-3.5" /> High-Resolution Confidence
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-4">
+               <h4 className="clinical-label flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Confidence
                </h4>
                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                     <p className="text-[9px] font-bold text-slate-500 uppercase">Agreement Score</p>
-                     <p className="text-xs font-black text-slate-800">{(selectedQuestion?.scoring?.confidence?.agreementScore || 0).toFixed(2)}</p>
+                     <p className="text-[10px] font-bold text-slate-500 uppercase">Agreement Score</p>
+                     <p className="text-xs font-extrabold text-slate-800">{(selectedQuestion?.scoring?.confidence?.agreementScore || 0).toFixed(2)}</p>
                   </div>
                   <div className="space-y-1">
-                     <p className="text-[9px] font-bold text-slate-500 uppercase">Manual Trigger</p>
-                     <p className="text-xs font-black text-slate-800">{selectedQuestion?.scoring?.confidence?.needsManualReview ? 'YES' : 'NO'}</p>
+                     <p className="text-[10px] font-bold text-slate-500 uppercase">Manual Trigger</p>
+                     <p className="text-xs font-extrabold text-slate-800">{selectedQuestion?.scoring?.confidence?.needsManualReview ? 'YES' : 'NO'}</p>
                   </div>
                </div>
                {selectedQuestion?.scoring?.confidence?.consistencyFlags && selectedQuestion.scoring.confidence.consistencyFlags.length > 0 && (
                  <div>
-                    <p className="text-[9px] font-bold text-slate-500 uppercase mb-2">Consistency Flags</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Consistency Flags</p>
                     <div className="flex flex-wrap gap-1.5">
                        {selectedQuestion.scoring.confidence.consistencyFlags.map((flag, i) => (
-                         <span key={i} className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[8px] font-black rounded uppercase">{flag}</span>
+                         <span key={i} className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[9px] font-bold rounded uppercase">{flag}</span>
                        ))}
                     </div>
                  </div>
@@ -1477,20 +1736,20 @@ export default function App() {
             </div>
 
             {/* Doctor Review Terminal */}
-            <div className="pt-8 border-t border-slate-100 space-y-6 pb-20">
+            <div className="pt-4 border-t border-slate-100 space-y-4 pb-20">
                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-[10px]">DR</div>
+                  <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-white font-extrabold text-[10px]">DR</div>
                   <div>
-                    <p className="text-[10px] font-black text-slate-900 uppercase">Clinical Auditor Console</p>
-                    <p className="text-[8px] font-bold text-slate-400">SESSION: {user.email?.substring(0, 15)}...</p>
+                    <p className="text-[11px] font-extrabold text-slate-900">Clinical Auditor</p>
+                    <p className="text-[10px] font-semibold text-slate-400">{user.email?.substring(0, 22)}...</p>
                   </div>
                </div>
 
                <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Critical Issue Type</label>
+                    <label className="clinical-label ml-1">Issue Type</label>
                     <select 
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/10 transition-all"
+                      className="clinical-field"
                       value={editForm?.issueType || 'none'}
                       onChange={(e) => editForm && setEditForm({ ...editForm, issueType: e.target.value as any })}
                     >
@@ -1505,42 +1764,42 @@ export default function App() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Manual Logic Feedback</label>
+                    <label className="clinical-label ml-1">Reviewer Comment</label>
                     <textarea 
-                      className="w-full h-32 bg-white border border-slate-200 rounded-2xl p-4 text-[11px] font-bold text-slate-700 placeholder-slate-400 focus:ring-2 focus:ring-blue-500/10 transition-all resize-none leading-relaxed" 
+                      className="w-full h-28 bg-white border border-slate-200 rounded-md p-3 text-[12px] font-semibold text-slate-700 placeholder-slate-400 focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all resize-none leading-relaxed outline-none"
                       placeholder="Specify corrective logic or clinical grounding overrides..."
                       value={editForm?.doctorFeedback || ''}
                       onChange={(e) => editForm && setEditForm({ ...editForm, doctorFeedback: e.target.value })}
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-4">
+                  <div className="grid grid-cols-2 gap-2 pt-2">
                      <button 
                        onClick={() => handleSaveReview('revise')}
                        disabled={saving}
-                       className="flex-1 py-3.5 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-blue-400 hover:text-blue-600 transition-all disabled:opacity-50"
+                       className="flex-1 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-md text-[11px] font-bold hover:border-blue-400 hover:text-blue-700 transition-all disabled:opacity-50"
                      >
                        Save Draft
                      </button>
                      <button 
                        onClick={() => handleSaveReview('flag')}
                        disabled={saving}
-                       className="flex-1 py-3.5 bg-red-50 text-red-600 border-2 border-red-100 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all disabled:opacity-50"
+                       className="flex-1 py-2.5 bg-red-50 text-red-700 border border-red-100 rounded-md text-[11px] font-bold hover:bg-red-100 transition-all disabled:opacity-50"
                      >
-                       Flag Improvement
+                       Flag
                      </button>
                   </div>
                   
                   <button 
                     onClick={() => handleSaveReview('publish')}
                     disabled={saving}
-                    className="w-full py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] shadow-xl hover:bg-black hover:scale-[1.01] transition-all flex items-center justify-center gap-3 disabled:opacity-50 active:scale-95 group"
+                    className="w-full py-3 bg-slate-900 text-white rounded-md text-[12px] font-extrabold hover:bg-black transition-all flex items-center justify-center gap-3 disabled:opacity-50 active:scale-[0.99] group"
                   >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-5 h-5 text-green-400" />}
-                    {saving ? 'Transmitting...' : 'Approve & Publish'}
+                    {saving ? 'Saving...' : 'Approve & Publish'}
                   </button>
                   
-                  <p className="text-[8px] text-slate-400 text-center uppercase font-black tracking-widest pt-2">
+                  <p className="text-[9px] text-slate-400 text-center font-semibold pt-1">
                     ISO 13485:2016 Compliant Final Validation
                   </p>
                </div>
@@ -1555,17 +1814,17 @@ export default function App() {
 
 function ScoreDimension({ title, score, description, children }: { title: string, score: number, description: string, children: ReactNode }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm group hover:shadow-md transition-all">
-       <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+       <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <div>
-            <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">{title}</h4>
-            <p className="text-[8px] font-bold text-slate-400 max-w-[180px] leading-tight uppercase mt-0.5">{description}</p>
+            <h4 className="text-[11px] font-extrabold text-slate-800">{title}</h4>
+            <p className="text-[10px] font-semibold text-slate-400 max-w-[230px] leading-snug mt-0.5">{description}</p>
           </div>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-black text-xs ${score > 4 ? 'bg-green-600 text-white' : score > 3 ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>
+          <div className={`w-9 h-8 rounded-md flex items-center justify-center font-mono font-extrabold text-xs ${score > 4 ? 'bg-green-600 text-white' : score > 3 ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>
              {score.toFixed(1)}
           </div>
        </div>
-       <div className="p-1 px-4 pb-4 space-y-1 mt-3">
+       <div className="px-3 py-3 space-y-1">
           {children}
        </div>
     </div>
@@ -1576,14 +1835,14 @@ function ScoreComponent({ label, score }: { label: string, score: number }) {
   const scorePercent = (score / 5) * 100;
   return (
     <div className="flex items-center gap-3 py-1">
-       <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter w-20 shrink-0">{label}</span>
+       <span className="text-[10px] font-bold text-slate-500 w-24 shrink-0">{label}</span>
        <div className="flex-1 bg-slate-100 h-1 rounded-full overflow-hidden">
           <div 
             className={`h-full transition-all duration-700 ${score > 4 ? 'bg-green-500' : score > 3 ? 'bg-blue-500' : 'bg-orange-400'}`}
             style={{ width: `${scorePercent}%` }}
           />
        </div>
-       <span className="text-[9px] font-mono font-black text-slate-600 w-6 text-right italic">{score.toFixed(1)}</span>
+       <span className="text-[10px] font-mono font-extrabold text-slate-600 w-7 text-right">{score.toFixed(1)}</span>
     </div>
   );
 }
@@ -1612,7 +1871,7 @@ function StatusBadge({ status }: { status: PatientStatus }) {
   const current = settings[status] || settings['Not started'];
 
   return (
-    <span className={`px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5 ${current.bg}`}>
+    <span className={`px-2 py-0.5 rounded border text-[9px] font-bold flex items-center gap-1.5 ${current.bg}`}>
       {current.icon}
       {status}
     </span>
